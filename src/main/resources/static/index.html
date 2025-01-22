@@ -1,61 +1,83 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebSocket Chat</title>
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs/lib/stomp.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
             margin: 0;
             padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
+            background-image: url('https://img.freepik.com/free-photo/top-view-megaphones-speech-bubbles_23-2149152686.jpg?t=st=1737545819~exp=1737549419~hmac=3300cf70ac66bc4d47dc3f3aab757f0c8c24f346904fc4f4f15dcda6664bedc6&w=1380'); /* Replace with your image URL */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
         }
+
         #chat {
-            width: 500px;
-            background: white;
+            width: 90%;
+            max-width: 500px;
+            height: 90%;
+            max-height: 600px;
+            background: rgba(255, 255, 255, 0.9); /* Slight transparency for better readability */
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             border-radius: 8px;
-            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
+
         #chat h1 {
             margin: 0;
             padding: 20px;
             background: #0078d7;
             color: white;
             text-align: center;
+            font-size: 1.5rem;
         }
+
         #messages {
+            flex: 1;
             border: none;
-            height: 300px;
             overflow-y: auto;
             padding: 10px;
             background: #f9f9f9;
         }
+
         #messages div {
             padding: 10px;
             margin-bottom: 5px;
             border-radius: 5px;
             color: white;
+            font-size: 0.9rem;
+            word-wrap: break-word;
         }
+
         #input-container {
             display: flex;
             gap: 10px;
             padding: 10px;
             background: #f1f1f1;
             border-top: 1px solid #ddd;
+            flex-wrap: wrap;
         }
+
         #input-container input[type="text"] {
             flex: 1;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
             font-size: 14px;
+            min-width: 0;
         }
+
         #input-container button {
             padding: 10px 20px;
             background: #0078d7;
@@ -65,8 +87,56 @@
             cursor: pointer;
             font-size: 14px;
         }
+
         #input-container button:hover {
             background: #005bb5;
+        }
+
+        /* Media queries for smaller screens */
+        @media (max-width: 768px) {
+            #chat {
+                height: 95%;
+                max-width: 100%;
+            }
+
+            #chat h1 {
+                font-size: 1.2rem;
+                padding: 15px;
+            }
+
+            #input-container input[type="text"] {
+                font-size: 12px;
+            }
+
+            #input-container button {
+                font-size: 12px;
+                padding: 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #chat {
+                height: 100%;
+                border-radius: 0;
+            }
+
+            #chat h1 {
+                font-size: 1rem;
+                padding: 10px;
+            }
+
+            #messages div {
+                font-size: 0.8rem;
+            }
+
+            #input-container input[type="text"] {
+                font-size: 10px;
+            }
+
+            #input-container button {
+                font-size: 10px;
+                padding: 8px;
+            }
         }
     </style>
 </head>
@@ -84,68 +154,106 @@
 <script>
     let stompClient = null;
 
-    // Mapping of sender names to unique colors
+    // Store sender colors
     const colorMap = {};
 
-    // Generate a consistent color for a sender
+    /**
+     * Generate or retrieve a consistent color for each sender
+     * @param {string} sender
+     * @returns {string} Color in HSL format
+     */
     function getColorForSender(sender) {
         if (!colorMap[sender]) {
-            // Create a hash-based color
             let hash = 0;
             for (let i = 0; i < sender.length; i++) {
                 hash = sender.charCodeAt(i) + ((hash << 5) - hash);
             }
-            const color = `hsl(${hash % 360}, 70%, 60%)`; // Generate HSL color
+            const color = `hsl(${hash % 360}, 70%, 60%)`;
             colorMap[sender] = color;
         }
         return colorMap[sender];
     }
 
-    // Connect to WebSocket
+    /**
+     * Fetch and display the last 10 chat messages from the backend
+     */
+    async function fetchChatHistory() {
+        try {
+            const response = await fetch('/api/messages'); // Fetch the last 10 messages
+            const messages = await response.json();
+            messages.forEach(showMessage); // Display each message in the chat UI
+        } catch (error) {
+            console.error('Error fetching chat history:', error);
+        }
+    }
+
+    /**
+     * Establish WebSocket connection and subscribe to public topic
+     */
     function connect() {
-        const socket = new SockJS('/chat');
+        const socket = new SockJS('/chat'); // Connect to WebSocket endpoint
         stompClient = Stomp.over(socket);
         stompClient.connect({}, function () {
-            console.log('Connected');
+            console.log('Connected to WebSocket');
             stompClient.subscribe('/topic/public', function (message) {
-                showMessage(JSON.parse(message.body));
+                showMessage(JSON.parse(message.body)); // Display messages in real-time
             });
         });
     }
 
-    // Send message
-    function sendMessage() {
-        const sender = document.getElementById('sender').value.trim();
-        const message = document.getElementById('message').value.trim();
+    /**
+     * Send a chat message via WebSocket and save it to the backend
+     */
+    async function sendMessage() {
+    const sender = document.getElementById('sender').value.trim();
+    const message = document.getElementById('message').value.trim();
 
-        if (!sender) {
-            alert("Please enter your name!");
-            return;
-        }
-        if (message) {
-            stompClient.send("/app/sendMessage", {}, JSON.stringify({ sender, content: message }));
-            document.getElementById('message').value = ''; // Clear input
-        }
+    if (!sender) {
+        alert("Please enter your name!");
+        return;
+    }
+    if (message) {
+        const messageData = { sender, content: message };
+
+        // Send the message only via WebSocket
+        stompClient.send("/app/sendMessage", {}, JSON.stringify(messageData));
+
+        // Clear the input field
+        document.getElementById('message').value = '';
+    }
     }
 
-    // Display message
+    /**
+     * Display a single chat message in the UI
+     * @param {object} message - The chat message object
+     */
     function showMessage(message) {
-        const messagesDiv = document.getElementById('messages');
-        const messageElement = document.createElement('div');
+    const messagesDiv = document.getElementById('messages');
+    const messageElement = document.createElement('div');
 
-        // Assign a unique background color based on the sender
-        messageElement.style.backgroundColor = getColorForSender(message.sender);
+    // Assign a unique background color for the sender
+    messageElement.style.backgroundColor = getColorForSender(message.sender);
 
-        // Add the message content
-        messageElement.textContent = `[${message.timestamp}] ${message.sender}: ${message.content}`;
-        messagesDiv.appendChild(messageElement);
+    // Parse and format the timestamp
+    const timestamp = new Date(message.timestamp).toLocaleTimeString();
 
-        // Scroll to the bottom
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    // Add the message content
+    messageElement.textContent = `[${timestamp}] ${message.sender}: ${message.content}`;
+
+    // Append the message to the chat
+    messagesDiv.appendChild(messageElement);
+
+    // Scroll to the bottom of the chat
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    // Connect on page load
-    window.onload = connect;
+
+    // Fetch chat history and connect WebSocket on page load
+    window.onload = async function () {
+        await fetchChatHistory(); // Load previous messages
+        connect(); // Connect to WebSocket
+    };
 </script>
+
 </body>
 </html>
